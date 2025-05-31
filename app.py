@@ -1,5 +1,5 @@
 import streamlit as st
-import os
+
 import json
 import time
 from mutagen.mp3 import MP3
@@ -8,11 +8,10 @@ from mutagen.mp3 import MP3
 
 
 # Detect if running on Streamlit Cloud
+import os
+
 IS_DEPLOYED = "STREAMLIT_SERVER_PORT" in os.environ
 
-pygame = None
-
-# Only import pygame locally and initialize mixer safely
 if not IS_DEPLOYED:
     import pygame
     try:
