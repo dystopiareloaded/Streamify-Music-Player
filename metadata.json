@@ -1,0 +1,32 @@
+{
+  "song1.mp3": {
+    "title": "Kaash (Unplugged)",
+    "movie": "Zoya Factor (2019)",
+    "singer": "Arijit Singh"
+  },
+  "song2.mp3": {
+    "title": "Bheegi Si Bhaagi Si",
+    "movie": "Raajneeti (2010)",
+    "singer": "Mohit Chauhan"
+  },
+  "song3.mp3": {
+    "title": "Is Jahaan Mein",
+    "movie": "Tum Mile (2009)",
+    "singer": "Mohit Chauhan"
+  },
+  "song4.mp3": {
+    "title": "Kesariya",
+    "movie": "Brahmastra (2022)",
+    "singer": "Arijit Singh"
+  },
+  "song5.mp3": {
+    "title": "Is This Love",
+    "movie": "Kismat Konnection (2008)",
+    "singer": "Mohit Chauhan"
+  },
+  "song6.mp3": {
+    "title": "Zamaana Lage",
+    "movie": "Metro In Dino (2025)",
+    "singer": "Arijit Singh"
+  }
+}
