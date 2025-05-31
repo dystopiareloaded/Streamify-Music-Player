@@ -10,12 +10,18 @@ from mutagen.mp3 import MP3
 # Detect if running on Streamlit Cloud
 IS_DEPLOYED = "STREAMLIT_SERVER_PORT" in os.environ
 
-# Only import pygame locally
+pygame = None
+
+# Only import pygame locally and initialize mixer safely
 if not IS_DEPLOYED:
     import pygame
-    pygame.mixer.init()
+    try:
+        pygame.mixer.init()
+    except Exception as e:
+        st.error(f"Error initializing pygame mixer: {e}")
 else:
     pygame = None
+
 
 
 st.set_page_config(page_title="Streamify+", layout="wide", page_icon="🎵")
