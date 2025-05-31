@@ -1,12 +1,22 @@
 import streamlit as st
 import os
-import pygame
 import json
 import time
 from mutagen.mp3 import MP3
 
 # Initialize pygame mixer
-pygame.mixer.init()
+
+
+# Detect if running on Streamlit Cloud
+IS_DEPLOYED = "STREAMLIT_SERVER_PORT" in os.environ
+
+# Only import pygame locally
+if not IS_DEPLOYED:
+    import pygame
+    pygame.mixer.init()
+else:
+    pygame = None
+
 
 st.set_page_config(page_title="Streamify+", layout="wide", page_icon="🎵")
 
@@ -95,15 +105,25 @@ def get_current_song():
 # Controls
 def play_song():
     current_song, song_path, _, _, _, _ = get_current_song()
-    pygame.mixer.music.load(song_path)
-    pygame.mixer.music.play()
+    
+    if not IS_DEPLOYED and pygame:
+        pygame.mixer.music.load(song_path)
+        pygame.mixer.music.play()
+        pygame.mixer.music.set_volume(st.session_state.get("volume", 0.5))
+    else:
+        # Use streamlit's audio widget
+        with open(song_path, "rb") as f:
+            audio_bytes = f.read()
+        st.audio(audio_bytes, format="audio/mp3", start_time=0)
+
     st.session_state.last_played = current_song
     st.session_state.start_time = time.time()
     st.session_state.is_playing = True
     st.session_state.force_update = False
 
 def stop_song():
-    pygame.mixer.music.stop()
+    if not IS_DEPLOYED and pygame:
+        pygame.mixer.music.stop()
     st.session_state.is_playing = False
     st.session_state.start_time = 0
 
@@ -118,7 +138,8 @@ def change_song(delta):
 
 def set_volume(volume):
     st.session_state.volume = volume
-    pygame.mixer.music.set_volume(volume)
+    if not IS_DEPLOYED and pygame:
+        pygame.mixer.music.set_volume(volume)
 
 st.markdown("""
     <style>
