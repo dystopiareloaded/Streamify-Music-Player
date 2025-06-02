@@ -5,6 +5,8 @@ st.set_page_config(page_title="Streamify+", layout="wide", page_icon="🎵")
 
 # Now import other modules
 import os
+os.environ['SDL_AUDIODRIVER'] = 'directsound'
+
 import json
 import time
 from mutagen.mp3 import MP3
@@ -16,19 +18,27 @@ AUDIO_FALLBACK = False
 if not IS_DEPLOYED:
     try:
         import pygame
-        # Initialize pygame without audio first
-        pygame.init()
         
-        # Try different audio driver configurations
-        audio_initialized = False
-        for driver in ['alsa', 'pulseaudio', 'directsound', 'coreaudio']:
-            try:
-                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096, devicename=None, allowedchanges=0)
-                if pygame.mixer.get_init() is not None:
-                    audio_initialized = True
-                    break
-            except:
-                continue
+        @st.cache_resource
+        def init_pygame():
+            # Initialize pygame without audio first
+            pygame.init()
+            
+            # Try different audio driver configurations
+            audio_initialized = False
+            for driver in ['alsa', 'pulseaudio', 'directsound', 'coreaudio', 'dsp', 'waveout']:
+                try:
+                    os.environ['SDL_AUDIODRIVER'] = driver
+                    pygame.mixer.quit()  # Quit previous init
+                    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+                    if pygame.mixer.get_init() is not None:
+                        audio_initialized = True
+                        break
+                except Exception as e:
+                    continue
+            return pygame, audio_initialized
+
+        pygame, audio_initialized = init_pygame()
         
         if not audio_initialized:
             st.warning("Could not initialize audio with any driver. Using fallback.")
@@ -37,9 +47,6 @@ if not IS_DEPLOYED:
         st.warning("Pygame not available, using fallback audio")
         pygame = None
         AUDIO_FALLBACK = True
-else:
-    pygame = None
-    AUDIO_FALLBACK = True
 
 # Set default volume if pygame is available
 if pygame and not AUDIO_FALLBACK:
@@ -145,38 +152,51 @@ def get_current_song():
 def play_song():
     current_song, song_path, _, _, _, _ = get_current_song()
     if not current_song:
+        st.warning("No song selected.")
         return
+
+    st.write(f"Debug - Trying to play: `{song_path}`")
+    st.write(f"Debug - File exists: {os.path.exists(song_path)}")
     
-    if not AUDIO_FALLBACK and pygame:
-        try:
+    if not os.path.exists(song_path):
+        st.error("Audio file not found.")
+        return
+
+    try:
+        if not AUDIO_FALLBACK and pygame:
+            st.write("Debug - Trying pygame playback")
             pygame.mixer.music.load(song_path)
             pygame.mixer.music.play()
-            pygame.mixer.music.set_volume(st.session_state.get("volume", 0.5))
-        except Exception as e:
-            st.warning(f"Error playing with pygame: {e}")
-            # Fallback to Streamlit audio
+            pygame.mixer.music.set_volume(st.session_state.get("volume", 0.7))
+            st.success(f"▶️ Playing with pygame: {current_song}")
+            st.write(f"Debug - Pygame mixer initialized: {pygame.mixer.get_init()}")
+            st.write(f"Debug - Pygame music busy: {pygame.mixer.music.get_busy()}")
+        else:
+            raise RuntimeError("Falling back to Streamlit audio.")
+    except Exception as e:
+        st.warning(f"⚠️ pygame error: {str(e)}")
+        try:
+            st.write("Debug - Trying Streamlit fallback")
             with open(song_path, "rb") as f:
                 audio_bytes = f.read()
             st.audio(audio_bytes, format="audio/mp3", start_time=0)
-    else:
-        # Use streamlit's audio widget
-        with open(song_path, "rb") as f:
-            audio_bytes = f.read()
-        st.audio(audio_bytes, format="audio/mp3", start_time=0)
+            st.info(f"▶️ Playing with Streamlit fallback: {current_song}")
+        except Exception as fallback_err:
+            st.error(f"❌ Failed to play even with fallback: {str(fallback_err)}")
+            return
 
     st.session_state.last_played = current_song
     st.session_state.start_time = time.time()
     st.session_state.is_playing = True
     st.session_state.force_update = False
 
+
 def stop_song():
-    if not AUDIO_FALLBACK and pygame:
-        try:
-            pygame.mixer.music.stop()
-        except:
-            pass
+    if pygame and pygame.mixer.music.get_busy():
+        pygame.mixer.music.stop()
     st.session_state.is_playing = False
-    st.session_state.start_time = 0
+    st.session_state.force_update = True
+    st.success("⏹ Stopped")
 
 def change_song(delta):
     stop_song()
@@ -194,6 +214,7 @@ def set_volume(volume):
             pygame.mixer.music.set_volume(volume)
         except:
             pass
+
 
 # [Rest of your existing code remains the same...]
 st.markdown("""
