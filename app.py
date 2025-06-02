@@ -1,36 +1,66 @@
+# THIS MUST BE THE VERY FIRST LINE IN YOUR ENTIRE SCRIPT
 import streamlit as st
+# MUST BE THE VERY FIRST COMMAND
+st.set_page_config(page_title="Streamify+", layout="wide", page_icon="🎵")
 
+# Now import other modules
+import os
 import json
 import time
 from mutagen.mp3 import MP3
 
-# Initialize pygame mixer
-
-
-# Detect if running on Streamlit Cloud
-import os
-
+# Initialize pygame mixer with better error handling
 IS_DEPLOYED = "STREAMLIT_SERVER_PORT" in os.environ
+AUDIO_FALLBACK = False
 
 if not IS_DEPLOYED:
-    import pygame
     try:
-        pygame.mixer.init()
-    except Exception as e:
-        st.error(f"Error initializing pygame mixer: {e}")
+        import pygame
+        # Initialize pygame without audio first
+        pygame.init()
+        
+        # Try different audio driver configurations
+        audio_initialized = False
+        for driver in ['alsa', 'pulseaudio', 'directsound', 'coreaudio']:
+            try:
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096, devicename=None, allowedchanges=0)
+                if pygame.mixer.get_init() is not None:
+                    audio_initialized = True
+                    break
+            except:
+                continue
+        
+        if not audio_initialized:
+            st.warning("Could not initialize audio with any driver. Using fallback.")
+            AUDIO_FALLBACK = True
+    except ImportError:
+        st.warning("Pygame not available, using fallback audio")
+        pygame = None
+        AUDIO_FALLBACK = True
 else:
     pygame = None
+    AUDIO_FALLBACK = True
 
+# Set default volume if pygame is available
+if pygame and not AUDIO_FALLBACK:
+    try:
+        pygame.mixer.music.set_volume(0.7)
+    except:
+        AUDIO_FALLBACK = True
 
-
-st.set_page_config(page_title="Streamify+", layout="wide", page_icon="🎵")
+# Continue with the rest of your code...
+# Rest of your code...
 
 mp3_folder = "music"
 album_folder = "album_art"
 
-# Load metadata and playlists
-metadata = json.load(open("metadata.json"))
-playlists = json.load(open("playlists/playlists.json"))
+# Load metadata and playlists with error handling
+try:
+    metadata = json.load(open("metadata.json"))
+    playlists = json.load(open("playlists/playlists.json"))
+except Exception as e:
+    st.error(f"Error loading music data: {e}")
+    st.stop()
 
 # Add All Songs playlist dynamically
 all_songs = []
@@ -70,16 +100,12 @@ playlist_name = st.sidebar.selectbox(
 )
 music_files = playlists[playlist_name]
 
-# <-- FIX: Ensure song_index is valid for current playlist -->
+# Session state setup with validation
 if "song_index" not in st.session_state:
     st.session_state.song_index = 0
-else:
-    if st.session_state.song_index >= len(music_files):
-        st.session_state.song_index = 0
+elif st.session_state.song_index >= len(music_files):
+    st.session_state.song_index = 0
 
-# Session state setup
-if "song_index" not in st.session_state:
-    st.session_state.song_index = 0
 if "is_playing" not in st.session_state:
     st.session_state.is_playing = False
 if "start_time" not in st.session_state:
@@ -88,33 +114,50 @@ if "last_played" not in st.session_state:
     st.session_state.last_played = None
 if "volume" not in st.session_state:
     st.session_state.volume = 0.7
-    pygame.mixer.music.set_volume(st.session_state.volume)
+    if pygame and not AUDIO_FALLBACK:
+        try:
+            pygame.mixer.music.set_volume(st.session_state.volume)
+        except:
+            AUDIO_FALLBACK = True
 if "force_update" not in st.session_state:
     st.session_state.force_update = False
 
-# Get current song info
+# Get current song info with better error handling
 def get_current_song():
-    current_song = music_files[st.session_state.song_index]
-    song_path = os.path.join(mp3_folder, current_song)
-    meta = metadata.get(current_song, {})
-    title = meta.get("title", current_song)
-    movie = meta.get("movie", "Unknown Movie")
-    singer = meta.get("singer", "Unknown Singer")
     try:
-        audio = MP3(song_path)
-        duration = int(audio.info.length)
-    except Exception:
-        duration = 0
-    return current_song, song_path, title, movie, singer, duration
+        current_song = music_files[st.session_state.song_index]
+        song_path = os.path.join(mp3_folder, current_song)
+        meta = metadata.get(current_song, {})
+        title = meta.get("title", current_song)
+        movie = meta.get("movie", "Unknown Movie")
+        singer = meta.get("singer", "Unknown Singer")
+        try:
+            audio = MP3(song_path)
+            duration = int(audio.info.length)
+        except Exception:
+            duration = 0
+        return current_song, song_path, title, movie, singer, duration
+    except Exception as e:
+        st.error(f"Error getting song info: {e}")
+        return None, None, "Error", "Error", "Error", 0
 
-# Controls
+# Controls with fallback support
 def play_song():
     current_song, song_path, _, _, _, _ = get_current_song()
+    if not current_song:
+        return
     
-    if not IS_DEPLOYED and pygame:
-        pygame.mixer.music.load(song_path)
-        pygame.mixer.music.play()
-        pygame.mixer.music.set_volume(st.session_state.get("volume", 0.5))
+    if not AUDIO_FALLBACK and pygame:
+        try:
+            pygame.mixer.music.load(song_path)
+            pygame.mixer.music.play()
+            pygame.mixer.music.set_volume(st.session_state.get("volume", 0.5))
+        except Exception as e:
+            st.warning(f"Error playing with pygame: {e}")
+            # Fallback to Streamlit audio
+            with open(song_path, "rb") as f:
+                audio_bytes = f.read()
+            st.audio(audio_bytes, format="audio/mp3", start_time=0)
     else:
         # Use streamlit's audio widget
         with open(song_path, "rb") as f:
@@ -127,8 +170,11 @@ def play_song():
     st.session_state.force_update = False
 
 def stop_song():
-    if not IS_DEPLOYED and pygame:
-        pygame.mixer.music.stop()
+    if not AUDIO_FALLBACK and pygame:
+        try:
+            pygame.mixer.music.stop()
+        except:
+            pass
     st.session_state.is_playing = False
     st.session_state.start_time = 0
 
@@ -143,9 +189,13 @@ def change_song(delta):
 
 def set_volume(volume):
     st.session_state.volume = volume
-    if not IS_DEPLOYED and pygame:
-        pygame.mixer.music.set_volume(volume)
+    if not AUDIO_FALLBACK and pygame:
+        try:
+            pygame.mixer.music.set_volume(volume)
+        except:
+            pass
 
+# [Rest of your existing code remains the same...]
 st.markdown("""
     <style>
     /* Define variables for both themes */
